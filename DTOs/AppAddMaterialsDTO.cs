@@ -5,6 +5,7 @@ namespace ProBuild_API.DTOs
     // DTO for adding a new material.
     public class AddMaterialDTO
     {
+        public Guid Id { get; set; }
         public required string Name { get; set; }
         public required double Quantity { get; set; }
         public required string MetricUnit { get; set; }
