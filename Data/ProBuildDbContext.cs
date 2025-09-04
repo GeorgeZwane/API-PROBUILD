@@ -19,17 +19,29 @@ namespace ProBuild_API.Data
         public DbSet<Project> Projects { get; set; }
         public DbSet<TaskEntity> Tasks { get; set; } 
         public DbSet<Equipment> Equipments { get; set; }
-        public DbSet<Material> Materials { get; set; }
-       // public DbSet<TaskDocument> TaskDocuments { get; set; }
+        public DbSet<Material> Materials { get; set; } 
 
-       
+    
         public DbSet<UserTaskAssignment> UserTaskAssignments { get; set; } 
         public DbSet<ProjectTeam> ProjectTeams { get; set; }
-        public DbSet<Milestone> Milestones { get; set; } 
+        public DbSet<Milestone> Milestones { get; set; }
 
+        public DbSet<Notification> Notifications { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Entity<Notification>()
+    .HasOne(n => n.Sender)
+    .WithMany()
+    .HasForeignKey(n => n.SenderId)
+    .OnDelete(DeleteBehavior.Restrict); // Fixes the cycle issue
+
+            modelBuilder.Entity<Notification>()
+                .HasOne(n => n.Recipient)
+                .WithMany()
+                .HasForeignKey(n => n.RecipientId)
+                .OnDelete(DeleteBehavior.Restrict); // Also safe
+
             modelBuilder.Entity<User>()
                 .HasIndex(u => u.Email) 
                 .IsUnique();
