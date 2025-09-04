@@ -24,9 +24,7 @@ namespace ProBuildWebAPI_v2_.Models
         public string? Status { get; set; }
 
         public int ProjectId { get; set; }
-        //public Project Project { get; set; } = null!; // Non-nullable navigation property, initialized to avoid warning
+        public int UserId { get; set; }
 
-        // public List<UserTaskAssignment>? UserTaskAssignments { get; set; }
-        public List<Milestone> Milestones { get; set; } = new List<Milestone>(); 
     }
 }
