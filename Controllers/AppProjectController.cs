@@ -7,7 +7,8 @@ using ProBuild_API.DTOs;
 using ProBuildWebAPI_v2_.DTOs; 
 using ProBuildWebAPI_v2_.Models; 
 using System.Security.Claims; 
-using Microsoft.AspNetCore.Authorization; 
+using Microsoft.AspNetCore.Authorization;
+using ProBuild_API.Models;
 
 namespace ProBuildWebAPI_v2_.Controllers
 {
@@ -37,6 +38,132 @@ namespace ProBuildWebAPI_v2_.Controllers
             return null;
         }
 
+
+        [HttpGet("getProjectReport/{projectId}")]
+        [Authorize]
+        public async Task<ActionResult<ProjectReportDTO>> GetProjectReport(int projectId)
+        {
+            try
+            {
+                // Verify authenticated user
+                var authenticatedUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(authenticatedUserId) || !int.TryParse(authenticatedUserId, out var parsedUserId))
+                {
+                    return StatusCode(403, new { error = "Unauthorized access." });
+                }
+
+                // Verify the project exists and belongs to the user
+                var project = await dbContext.Projects
+                    .Where(p => p.ProjectId == projectId && p.UserId == parsedUserId)
+                    .FirstOrDefaultAsync();
+                if (project == null)
+                {
+                    return NotFound(new { error = "Project not found or you do not have permission." });
+                }
+
+                // Calculate task counts
+                var totalTasks = await dbContext.Tasks.CountAsync(t => t.ProjectId == projectId);
+                var completedTasks = await dbContext.Tasks.CountAsync(t => t.ProjectId == projectId && t.Status == "Complete");
+                var tasksInProgress = await dbContext.Tasks.CountAsync(t => t.ProjectId == projectId && t.Status == "In Progress");
+
+                // Create response
+                var report = new ProjectReportDTO
+                {
+                    ProjectName = project.Name,
+                    StartDate = project.Startdate,
+                    EndDate = project.Enddate,
+                    TotalTasks = totalTasks,
+                    CompletedTasks = completedTasks,
+                    TasksInProgress = tasksInProgress,
+                    Budget = project.Budget
+                };
+
+                return Ok(report);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = $"Error fetching project report: {ex.Message}" });
+            }
+        }
+
+
+
+        //[HttpGet("getProjectReport/{projectId}")]
+        //public async Task<ActionResult> GetProjectReport(int projectId)
+        //{
+        //    // Verify the project exists
+        //    var project = await dbContext.Projects.FindAsync(projectId);
+        //    if (project == null)
+        //    {
+        //        return NotFound("Project not found.");
+        //    }
+
+        //    // Calculate task counts for the specific project
+        //    var totalTasks = await dbContext.Tasks.CountAsync(t => t.ProjectId == projectId);
+        //    var completedTasks = await dbContext.Tasks.CountAsync(t => t.ProjectId == projectId && t.Status == "Complete");
+        //    var tasksInProgress = await dbContext.Tasks.CountAsync(t => t.ProjectId == projectId && t.Status == "In Progress");
+
+        //    // Use the budget from the Project model
+        //    var budget = project.Budget;
+
+        //    return Ok(new
+        //    {
+        //        TotalTasks = totalTasks,
+        //        CompletedTasks = completedTasks,
+        //        TasksInProgress = tasksInProgress,
+        //        Budget = budget,
+        //    });
+
+            
+        //}
+
+
+
+        [HttpGet("getProjectsByUserId/{userId}")]
+        //[Authorize]
+        public async Task<ActionResult<IEnumerable<Project>>> GetProjectsByUserId(string userId)
+        {
+            // Validate input
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return BadRequest(new { error = "User ID cannot be empty." });
+            }
+
+            if (!int.TryParse(userId, out var parsedUserId))
+            {
+                return BadRequest(new { error = "Invalid user ID format. Must be a valid integer." });
+            }
+
+            // Verify authenticated user ID from JWT token
+            var authenticatedUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(authenticatedUserId) || authenticatedUserId != userId)
+            {
+                return StatusCode(403, new { error = "You do not have permission to access this data." });
+            }
+            try
+            {
+                // Query projects for the specified user
+                var projects = await dbContext.Projects
+                    .Where(p => p.UserId == parsedUserId)
+                    .ToListAsync();
+
+                if (projects == null || !projects.Any())
+                {
+                    return NotFound(new { error = "No projects found for this user." });
+                }
+
+                return Ok(projects);
+            }
+            catch (Exception ex)
+            {
+                // Log the exception (use your logging mechanism, e.g., Serilog, ILogger)
+               // _logger.LogError(ex, "Error fetching projects for user {UserId}", userId);
+                return StatusCode(500, new { error = "An error occurred while fetching projects." });
+            }
+        }
+
+
+
         [HttpGet("getAllProjects")] 
         [Authorize] 
         public IActionResult GetAllProjects()
@@ -65,6 +192,35 @@ namespace ProBuildWebAPI_v2_.Controllers
             return Ok(allProjects);
         }
 
+
+        [HttpGet("countAllProjectAndTasks")]
+        public IActionResult GetProjectsCount()
+        {
+            int totalProjects = dbContext.Projects.Count();
+            var completeProjects = dbContext.Projects.Count(p => p.Status == "Complete");
+            var inProgressProjects = dbContext.Projects.Count(p => p.Status == "In Progress");
+            var incompleteProjects = dbContext.Projects.Count(p => p.Status == "Incomplete");
+
+            var totalTasks = dbContext.Tasks.Count();
+
+            var completeTasks = dbContext.Tasks.Count(t => t.Status == "Complete");
+            var inProgressTasks = dbContext.Tasks.Count(t => t.Status == "In Progress");
+            var incompleteTasks = dbContext.Tasks.Count(t => t.Status == "Incomplete");
+            var totalBudget = dbContext.Projects.Sum(p => (decimal?)p.Budget) ?? 0m;
+
+            return Ok(new
+            {
+                ProjectCount = totalProjects,
+                CompleteProjects = completeProjects,
+                InProgressProjects = inProgressProjects,
+                IncompleteProjects = incompleteProjects,
+                TotalTasks = totalTasks,
+                CompleteTasks = completeTasks,
+                InProgressTasks = inProgressTasks,
+                IncompleteTasks = incompleteTasks,
+                TotalBudget = totalBudget
+            });
+        }
 
         [HttpPost("createProjects")] 
         [Authorize] 
@@ -152,6 +308,10 @@ namespace ProBuildWebAPI_v2_.Controllers
             int count = dbContext.Projects.Where(p => p.UserId == userId.Value).Count(); 
             return Ok(new { ProjectCount = count });
         }
+
+
+
+
 
 
         [HttpPut("updateProject/{id}")] 

@@ -10,7 +10,7 @@ namespace ProBuildWebAPI_v2_.Controllers
 {
     [Route("api/tasks")] 
     [ApiController]
-    [Authorize] 
+    //[Authorize] 
     public class AppTaskController : ControllerBase
     {
         private readonly ProBuildDbContext dbContext;
@@ -68,6 +68,31 @@ namespace ProBuildWebAPI_v2_.Controllers
 
             return Ok(tasks);
         }
+
+        [HttpGet("countTasksByProject/{projectId}")]
+        public IActionResult CountTasksByProjectId(int projectId)
+        {
+            bool projectExists = dbContext.Tasks.Any(p => p.ProjectId == projectId);
+            if (!projectExists)
+            {
+                return NotFound(new { Message = $"Project with ID {projectId} not found." });
+            }
+
+            var totalTasks = dbContext.Tasks.Count(t => t.ProjectId == projectId);
+            var completeTasks = dbContext.Tasks.Count(t => t.ProjectId == projectId && t.Status == "Complete");
+            var inProgressTasks = dbContext.Tasks.Count(t => t.ProjectId == projectId && t.Status == "In Progress");
+            var incompleteTasks = dbContext.Tasks.Count(t => t.ProjectId == projectId && t.Status == "Incomplete");
+
+            return Ok(new
+            {
+                TotalTasks = totalTasks,
+                CompleteTasks = completeTasks,
+                InProgressTasks = inProgressTasks,
+                IncompleteTasks = incompleteTasks,
+
+            });
+        }
+
 
         [HttpGet("getTaskById/{id:guid}")] 
         public async Task<IActionResult> GetTaskById(Guid id)

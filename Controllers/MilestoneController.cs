@@ -1,4 +1,7 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿// File: ProBuild_API.Controllers.MilestoneController.cs
+// This is the backend API controller that handles data operations.
+
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProBuild_API.Data;
 using ProBuild_API.DTOs;
@@ -7,154 +10,96 @@ using ProBuildWebAPI_v2_.Models;
 
 namespace ProBuild_API.Controllers
 {
-    [ApiController]
-    [Route("api/webmilestone")]
-    public class MilestoneController : ControllerBase
+    [ApiController] // Use ApiController attribute
+    [Route("api/webmilestone")] // General route prefix
+    public class MilestoneController : Controller
     {
         private readonly ProBuildDbContext dbContext;
-
         public MilestoneController(ProBuildDbContext dbContext)
         {
             this.dbContext = dbContext;
         }
 
-        [HttpPost("{taskId}/addMilestone")]
-        public async Task<IActionResult> AddMilestone(Guid taskId, [FromBody] MileStoneDTO dto)
+  [HttpPost("{taskId}/addMilestone")]
+        public IActionResult AddMilestone(Guid taskId, [FromBody] MileStoneDTO dto)
         {
-            var taskExists = await dbContext.Tasks.AnyAsync(t => t.Id == taskId);
+            var taskExists = dbContext.Tasks.Any(t => t.Id == taskId);
             if (!taskExists)
                 return NotFound($"Task with ID {taskId} not found.");
 
+            // Create and add milestone
             var milestone = new Milestone
             {
                 MilestoneName = dto.MilestoneName,
                 Description = dto.Description,
                 Reason = dto.Reason,
-                Status = "Not Started",
+                Status = "InComplete",
                 DueDate = dto.DueDate,
                 TaskEntityId = taskId
             };
 
-            await dbContext.Milestones.AddAsync(milestone);
-            await dbContext.SaveChangesAsync();
-
-            await UpdateTaskProgress(taskId);
+            dbContext.Milestones.Add(milestone);
+            dbContext.SaveChanges();
 
             return Ok(new
             {
-                Message = "Milestone added successfully and task progress updated.",
+                Message = "Milestone added successfully.",
                 Milestone = milestone
             });
         }
 
-        [HttpPut("{MilestoneId}/updateMilestone")]
-        public async Task<IActionResult> UpdateMilestone(Guid MilestoneId, [FromBody] UpdateMilestoneDTO dto)
-        {
-            if (dto == null || MilestoneId != dto.Id)
-                return BadRequest("Invalid milestone data. ID mismatch.");
-
-            var existingMilestone = await dbContext.Milestones.FindAsync(MilestoneId);
-            if (existingMilestone == null)
-                return NotFound($"Milestone with ID {MilestoneId} not found.");
-
-            existingMilestone.Reason = dto.Reason;
-            existingMilestone.Status = dto.Status;
-
-            try
-            {
-                await dbContext.SaveChangesAsync();
-                await UpdateTaskProgress(existingMilestone.TaskEntityId);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error updating milestone: {ex.Message}");
-                return StatusCode(500, "An error occurred while updating the milestone.");
-            }
-
-            return Ok("Milestone Updated and Task Progress Recalculated Successfully");
-        }
-
         [HttpGet("{taskId}/GetMilestonesByTaskID")]
-        public async Task<IActionResult> GetMilestonesByTaskId(Guid taskId)
+        public IActionResult GetMilestonesByTaskId(Guid taskId)
         {
-            var taskMilestones = await dbContext.Milestones
-                .Where(t => t.TaskEntityId == taskId)
-                .ToListAsync();
+            var taskMilestones = dbContext.Milestones
+                .Where(t => t.TaskEntityId == taskId).ToList();
 
-            if (taskMilestones == null || !taskMilestones.Any())
-                return NotFound("No milestones found for this task.");
+            if (taskMilestones == null)
+                return NotFound("taskMilestones not found");
 
             return Ok(taskMilestones);
         }
 
-        [HttpGet("{milestoneId}")]
-        public async Task<IActionResult> GetMilestoneById(Guid milestoneId)
+
+
+
+     // NEW ACTION: Get a single milestone by its ID
+        [HttpGet("GetMilestoneById/{milestoneId}")]
+        public IActionResult GetMilestoneById(Guid milestoneId)
         {
-            var milestone = await dbContext.Milestones.FirstOrDefaultAsync(m => m.Id == milestoneId);
+            var milestone = dbContext.Milestones.FirstOrDefault();
+
             if (milestone == null)
-                return NotFound($"Milestone with ID {milestoneId} not found.");
+            {
+                return NotFound($"Milestones not found.");
+            }
 
             return Ok(milestone);
         }
 
-        private async Task UpdateTaskProgress(Guid taskId)
+        [HttpPut("{MilestoneId}/updateMilestone")]
+        public IActionResult UpdateTask(Guid MilestoneId, [FromBody] MileStoneDTO dto)
         {
-            var task = await dbContext.Tasks.FindAsync(taskId);
-            if (task == null) return;
+            if (dto == null || MilestoneId != dto.Id)
+                return BadRequest("Invalid task data.");
 
-            var milestones = await dbContext.Milestones
-                .Where(m => m.TaskEntityId == taskId)
-                .ToListAsync();
+            var existingTask = dbContext.Milestones.FirstOrDefault(t => t.Id == MilestoneId);
+            if (existingTask == null)
+                return NotFound($"Milestone with ID {MilestoneId} not found.");
 
-            if (milestones.Count == 0)
+            existingTask.Reason = dto.Reason;
+            existingTask.Status = dto.Status;
+
+            try
             {
-                task.Progress = 0;
-                task.Status = "Not Started";
-                await dbContext.SaveChangesAsync();
-                await UpdateProjectProgress(task.ProjectId);
-                return;
+                dbContext.SaveChanges();
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "An error occurred while updating the task.");
             }
 
-            var completedCount = milestones.Count(m => m.Status == "Completed");
-            var progress = (double)completedCount / milestones.Count * 100;
-
-            task.Progress = Math.Round(progress, 2);
-
-            task.Status = progress == 0 ? "Not Started"
-                         : progress < 100 ? "InProgress"
-                         : "Completed";
-
-            await dbContext.SaveChangesAsync();
-            await UpdateProjectProgress(task.ProjectId);
-        }
-
-        private async Task UpdateProjectProgress(int projectId)
-        {
-            var project = await dbContext.Projects.FindAsync(projectId);
-            if (project == null) return;
-
-            var tasks = await dbContext.Tasks
-                .Where(t => t.ProjectId == projectId)
-                .ToListAsync();
-
-            if (tasks.Count == 0)
-            {
-                project.Progress = 0;
-                project.Status = "Not Started";
-                await dbContext.SaveChangesAsync();
-                return;
-            }
-
-            var totalProgress = tasks.Sum(t => t.Progress);
-            var averageProgress = totalProgress / tasks.Count;
-
-            project.Progress = (double?)Math.Round((decimal)averageProgress, 2);
-
-            project.Status = averageProgress == 0 ? "Not Started"
-                             : averageProgress < 100 ? "In Progress"
-                             : "Completed";
-
-            await dbContext.SaveChangesAsync();
+            return Ok("Milestone Updated Successfully");
         }
     }
 }
