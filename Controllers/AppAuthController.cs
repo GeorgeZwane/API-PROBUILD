@@ -45,7 +45,8 @@ public class AppAuthController : ControllerBase
                 Password = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                 Email = dto.Email,
                 Address = dto.Address,
-                Contact = dto.Contact
+                Contact = dto.Contact,
+                UserRole = dto.UserRole
             };
 
             _context.Users.Add(user);
@@ -61,8 +62,8 @@ public class AppAuthController : ControllerBase
                 email = user.Email,
                 address = user.Address,
                 contact = user.Contact,
-                role = user.UserRole,
-                token = token // Return the generated token
+                userRole = user.UserRole,
+                token = token
             });
         }
         catch (Exception ex)
@@ -76,22 +77,62 @@ public class AppAuthController : ControllerBase
     {
         try
         {
+            // Validate input
+            if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Password))
+            {
+                return BadRequest(new { error = "Email and password are required" });
+            }
+
+            // Find user by email
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
             if (user == null || !BCrypt.Net.BCrypt.Verify(dto.Password, user.Password))
             {
                 return Unauthorized(new { error = "Invalid email or password" });
             }
 
-            // Generate JWT token for the authenticated user
+            // Generate JWT token
             var token = GenerateJwtToken(user);
 
-            return Ok(new { token });
+            // Create response DTO
+            var response = new LoginResponseDto
+            {
+                UserId = user.UserId,
+                UserRole = user.UserRole,
+                UserName = user.Name,
+                Token = token
+            };
+
+            return Ok(response);
         }
         catch (Exception ex)
         {
+            // Log the exception (use your logging mechanism, e.g., ILogger)
             return StatusCode(500, new { error = $"Login failed: {ex.Message}" });
         }
     }
+
+
+    //[HttpPost("login")]
+    //public async Task<IActionResult> Login([FromBody] AppUserLoginDto dto)
+    //{
+    //    try
+    //    {
+    //        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
+    //        if (user == null || !BCrypt.Net.BCrypt.Verify(dto.Password, user.Password))
+    //        {
+    //            return Unauthorized(new { error = "Invalid email or password" });
+    //        }
+
+    //        // Generate JWT token for the authenticated user
+    //        var token = GenerateJwtToken(user);
+
+    //        return Ok(new { token });
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        return StatusCode(500, new { error = $"Login failed: {ex.Message}" });
+    //    }
+    //}
 
     // Helper method to generate JWT token
     private string GenerateJwtToken(User user)
